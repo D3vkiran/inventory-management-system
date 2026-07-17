@@ -35,6 +35,26 @@ import "./styles.css";
 
 const STORE_KEY = "resellerInventoryApp.amazon.2026-07-15";
 const STATUS_TYPES = ["available", "reserved", "shipped", "sold", "damaged", "returned"];
+const INVENTORY_ACTIONS = [
+  { value: "RECEIVE_STOCK", label: "Receive Stock" },
+  { value: "SOLD", label: "Sold" },
+  { value: "RETURN_RECEIVED", label: "Return Received" },
+  { value: "RETURN_TO_SUPPLIER", label: "Return to Supplier" },
+  { value: "DUMP_DISPOSE", label: "Dump / Dispose" },
+  { value: "DAMAGED", label: "Damaged" },
+  { value: "LOST_MISSING", label: "Lost / Missing" },
+  { value: "GIVEAWAY_SAMPLE", label: "Giveaway / Sample" },
+  { value: "MANUAL_ADJUSTMENT", label: "Manual Adjustment" }
+];
+const REMOVAL_ACTIONS = ["SOLD", "RETURN_TO_SUPPLIER", "DUMP_DISPOSE", "DAMAGED", "LOST_MISSING", "GIVEAWAY_SAMPLE"];
+const REMOVAL_REASONS = [
+  { value: "DAMAGED", label: "Damaged" },
+  { value: "LOST", label: "Lost" },
+  { value: "EXPIRED", label: "Expired" },
+  { value: "UNSELLABLE", label: "Unsellable" },
+  { value: "DESTROYED", label: "Destroyed" },
+  { value: "OTHER", label: "Other" }
+];
 const LOCATIONS = ["Home Storage", "Warehouse", "Amazon FBA", "In Transit", "Returned Inventory"];
 const MARKETPLACES = ["Amazon", "eBay", "Walmart", "Shopify", "Other"];
 const SHIPMENT_STATUS = ["Draft", "Packed", "Dispatched", "In Transit", "Received", "Closed"];
@@ -42,6 +62,8 @@ const SHIPMENT_STATUS = ["Draft", "Packed", "Dispatched", "In Transit", "Receive
 const uid = (prefix) => `${prefix}_${Math.random().toString(36).slice(2, 9)}_${Date.now().toString(36)}`;
 const money = (value) => `$${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const today = () => new Date().toISOString().slice(0, 10);
+const inventoryActionLabel = (value) => INVENTORY_ACTIONS.find((item) => item.value === value)?.label || value;
+const inventoryReasonLabel = (value) => REMOVAL_REASONS.find((item) => item.value === value)?.label || value || "";
 
 const parseCSV = (csv) => {
   const lines = csv.trim().split('\n');
@@ -143,6 +165,7 @@ const seedState = () => {
       { id: uid("stock"), productId: "product_amazon_b08tqn2ns2_13_0", location: "Amazon FBA", status: "available", quantity: 10 },
       { id: uid("stock"), productId: "product_amazon_b08kwmtqpk_0_3_months", location: "Amazon FBA", status: "available", quantity: 130 }
     ],
+    inventoryHistory: [],
     purchases: [],
     sales: [],
     shipments: [],
@@ -156,7 +179,8 @@ function loadState() {
   try {
     const saved = localStorage.getItem(STORE_KEY);
     const parsed = saved ? JSON.parse(saved) : seedState();
-    return api.hasToken() ? parsed : { ...parsed, sessionUserId: null, products: [], inventory: [] };
+    const normalized = { ...parsed, inventoryHistory: parsed.inventoryHistory || [] };
+    return api.hasToken() ? normalized : { ...normalized, sessionUserId: null, products: [], inventory: [], inventoryHistory: [] };
   } catch {
     return seedState();
   }
@@ -193,8 +217,8 @@ function App() {
   const loadRemoteProductsAndInventory = async (baseState = state) => {
     setLoadingRemoteData(true);
     try {
-      const [products, inventory] = await Promise.all([api.getProducts(), api.getInventory()]);
-      const next = withActivity({ ...baseState, products, inventory }, "Loaded products and inventory from backend");
+      const [products, inventory, inventoryHistory] = await Promise.all([api.getProducts(), api.getInventory(), api.getInventoryHistory()]);
+      const next = withActivity({ ...baseState, products, inventory, inventoryHistory }, "Loaded products and inventory from backend");
       saveState(next);
       setRemoteError("");
       return next;
@@ -357,8 +381,8 @@ inventory = updateStock(
 
   const adjustInventory = async (payload) => {
     try {
-      await api.createInventory(payload);
-      await loadRemoteProductsAndInventory(withActivity(state, `Adjusted inventory by ${payload.quantity} units`));
+      await api.applyInventoryAction(payload);
+      await loadRemoteProductsAndInventory(withActivity(state, `Applied inventory action: ${inventoryActionLabel(payload.action)}`));
       setModal(null);
     } catch (error) {
       setRemoteError(error.message || "Inventory save failed.");
@@ -448,7 +472,7 @@ inventory = updateStock(
 
   const logout = () => {
     api.clearToken();
-    saveState({ ...state, sessionUserId: null, products: [], inventory: [] });
+    saveState({ ...state, sessionUserId: null, products: [], inventory: [], inventoryHistory: [] });
   };
 
   if (!currentUser) return <AuthScreen onSubmit={submitLogin} apiError={remoteError} />;
@@ -616,6 +640,19 @@ function Dashboard({ state, metrics, productQty, productCost, setView, setModal 
 }
 
 function Products({ products, state, productQty, productCost, filters, setFilters, setModal }) {
+  const historyRows = (state.inventoryHistory || []).slice(0, 25).map((item) => [
+    item.timestamp ? new Date(item.timestamp).toLocaleString() : "",
+    item.sku,
+    item.productName,
+    inventoryActionLabel(item.action),
+    item.quantity > 0 ? `+${item.quantity}` : item.quantity,
+    item.previousStock,
+    item.newStock,
+    inventoryReasonLabel(item.reason),
+    item.notes,
+    item.user
+  ]);
+
   return (
     <section className="stack">
       <div className="toolbar">
@@ -647,6 +684,15 @@ function Products({ products, state, productQty, productCost, filters, setFilter
           </article>
         ))}
       </div>
+      <section className="wide-panel">
+        <div className="section-head">
+          <h2><ClipboardList size={20} />Inventory history</h2>
+        </div>
+        <DataTable
+          columns={["Timestamp", "SKU", "Product", "Action", "Qty", "Previous", "New", "Reason", "Notes", "User"]}
+          rows={historyRows}
+        />
+      </section>
     </section>
   );
 }
@@ -1094,8 +1140,37 @@ function ShipmentModal({ state, onClose, onSave }) {
 }
 
 function AdjustModal({ state, onClose, onSave }) {
-  const [form, setForm] = useState({ productId: state.products[0]?.id || "", location: "Home Storage", status: "available", quantity: 1 });
-  return <Modal title="Adjust stock" onClose={onClose}><SmartForm form={form} setForm={setForm} onSave={onSave} fields={["productId", "location", "status", "quantity"]} state={state} /></Modal>;
+  const [form, setForm] = useState({ productId: state.products[0]?.id || "", location: "Home Storage", action: "RECEIVE_STOCK", quantity: 1, reason: "", notes: "" });
+  const [error, setError] = useState("");
+  const quantity = Number(form.quantity || 0);
+  const reasonRequired = REMOVAL_ACTIONS.includes(form.action) || (form.action === "MANUAL_ADJUSTMENT" && quantity < 0);
+  const submit = (event) => {
+    event.preventDefault();
+    if (reasonRequired && !form.reason) {
+      setError("Select a reason before removing inventory.");
+      return;
+    }
+    setError("");
+    onSave({ ...form, reason: reasonRequired ? form.reason : "", notes: form.notes });
+  };
+
+  return (
+    <Modal title="Inventory Action" onClose={onClose}>
+      <form className="smart-form" onSubmit={submit}>
+        <Select label="Product" value={form.productId} onChange={(next) => setForm({ ...form, productId: next })} options={state.products.map((item) => ({ label: `${item.sku} · ${item.name}`, value: item.id }))} />
+        <Select label="Location" value={form.location} onChange={(next) => setForm({ ...form, location: next })} options={LOCATIONS} />
+        <Select label="Inventory Action" value={form.action} onChange={(next) => setForm({ ...form, action: next, reason: "" })} options={INVENTORY_ACTIONS} />
+        <label className="field">
+          <span>Quantity</span>
+          <input type="number" value={form.quantity} required step="1" onChange={(event) => setForm({ ...form, quantity: event.target.value })} />
+        </label>
+        {reasonRequired && <Select label="Reason" value={form.reason} onChange={(next) => setForm({ ...form, reason: next })} options={[{ value: "", label: "Select reason" }, ...REMOVAL_REASONS]} />}
+        {reasonRequired && <label className="field"><span>Notes</span><textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>}
+        {error && <p className="form-error">{error}</p>}
+        <button className="primary-button" type="submit"><Check size={16} />Save</button>
+      </form>
+    </Modal>
+  );
 }
 
 function SmartForm({ form, setForm, fields, onSave, state }) {

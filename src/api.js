@@ -51,6 +51,21 @@ const normalizeInventory = (item) => ({
   quantity: Number(item.quantity || 0)
 });
 
+const normalizeInventoryMovement = (item) => ({
+  id: item.id,
+  productId: item.productId,
+  productName: item.productName || "",
+  sku: item.sku || "",
+  action: item.action || "",
+  quantity: Number(item.quantity || 0),
+  previousStock: Number(item.previousStock || 0),
+  newStock: Number(item.newStock || 0),
+  reason: item.reason || "",
+  notes: item.notes || "",
+  user: item.user || "",
+  timestamp: item.timestamp || ""
+});
+
 const toProductRequest = (product) => ({
   sku: product.sku,
   asin: product.asin || null,
@@ -72,6 +87,15 @@ const toInventoryRequest = (item) => ({
   location: item.location,
   status: String(item.status || "available").toUpperCase(),
   quantity: Number(item.quantity || 0)
+});
+
+const toInventoryActionRequest = (item) => ({
+  productId: Number(item.productId),
+  location: item.location,
+  action: item.action,
+  quantity: Number(item.quantity || 0),
+  reason: item.reason || null,
+  notes: item.notes || null
 });
 
 export const api = {
@@ -112,6 +136,20 @@ export const api = {
   async getInventory() {
     const inventory = await request("/inventory");
     return inventory.map(normalizeInventory);
+  },
+  async getInventoryHistory() {
+    const movements = await request("/inventory/history");
+    return movements.map(normalizeInventoryMovement);
+  },
+  async applyInventoryAction(item) {
+    const result = await request("/inventory/actions", {
+      method: "POST",
+      body: JSON.stringify(toInventoryActionRequest(item))
+    });
+    return {
+      inventory: normalizeInventory(result.inventory),
+      movement: normalizeInventoryMovement(result.movement)
+    };
   },
   async createInventory(item) {
     const created = await request("/inventory", {

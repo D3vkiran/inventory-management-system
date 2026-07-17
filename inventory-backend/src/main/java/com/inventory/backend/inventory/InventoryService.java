@@ -1,11 +1,13 @@
 package com.inventory.backend.inventory;
 
 import com.inventory.backend.exception.ResourceNotFoundException;
+import com.inventory.backend.product.Product;
 import com.inventory.backend.product.ProductService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.List;
 
 @Service
@@ -13,6 +15,7 @@ import java.util.List;
 public class InventoryService {
 
     private final InventoryRepository inventoryRepository;
+    private final InventoryMovementRepository inventoryMovementRepository;
     private final ProductService productService;
 
     @Transactional(readOnly = true)
@@ -34,6 +37,14 @@ public class InventoryService {
         return InventoryResponse.from(getEntity(id));
     }
 
+    @Transactional(readOnly = true)
+    public List<InventoryMovementResponse> findHistory() {
+        return inventoryMovementRepository.findAllByOrderByOccurredAtDesc()
+                .stream()
+                .map(InventoryMovementResponse::from)
+                .toList();
+    }
+
     @Transactional
     public InventoryResponse create(InventoryRequest request) {
         InventoryItem item = new InventoryItem();
@@ -53,10 +64,88 @@ public class InventoryService {
         inventoryRepository.delete(getEntity(id));
     }
 
+    @Transactional
+    public InventoryOperationResponse applyAction(InventoryActionRequest request, String userEmail) {
+        Product product = productService.getEntity(request.productId());
+        String location = request.location().trim();
+        int delta = calculateDelta(request);
+
+        InventoryItem item = inventoryRepository
+                .findByProductIdAndLocationIgnoreCaseAndStatus(product.getId(), location, InventoryStatus.AVAILABLE)
+                .orElseGet(() -> {
+                    InventoryItem created = new InventoryItem();
+                    created.setProduct(product);
+                    created.setLocation(location);
+                    created.setStatus(InventoryStatus.AVAILABLE);
+                    created.setQuantity(0);
+                    return created;
+                });
+
+        int previousStock = item.getQuantity();
+        int newStock = previousStock + delta;
+        if (newStock < 0) {
+            throw new IllegalArgumentException("Inventory action rejected: quantity exceeds available stock. Available stock is " + previousStock + ".");
+        }
+
+        if (delta < 0 && request.reason() == null) {
+            throw new IllegalArgumentException("Reason is required when inventory is removed.");
+        }
+
+        item.setQuantity(newStock);
+        InventoryItem savedItem = inventoryRepository.save(item);
+
+        InventoryMovement movement = new InventoryMovement();
+        movement.setProduct(product);
+        movement.setSku(product.getSku());
+        movement.setAction(request.action());
+        movement.setQuantity(delta);
+        movement.setPreviousStock(previousStock);
+        movement.setNewStock(newStock);
+        movement.setReason(delta < 0 ? request.reason() : null);
+        movement.setNotes(cleanText(request.notes()));
+        movement.setUserEmail(cleanUser(userEmail));
+        movement.setOccurredAt(Instant.now());
+        InventoryMovement savedMovement = inventoryMovementRepository.save(movement);
+
+        return new InventoryOperationResponse(
+                InventoryResponse.from(savedItem),
+                InventoryMovementResponse.from(savedMovement)
+        );
+    }
+
     private void apply(InventoryItem item, InventoryRequest request) {
         item.setProduct(productService.getEntity(request.productId()));
         item.setLocation(request.location().trim());
         item.setStatus(request.status());
         item.setQuantity(request.quantity());
+    }
+
+    private int calculateDelta(InventoryActionRequest request) {
+        int quantity = request.quantity();
+        if (quantity == 0) {
+            throw new IllegalArgumentException("Quantity must not be zero.");
+        }
+
+        if (request.action().increasesStock()) {
+            return Math.abs(quantity);
+        }
+        if (request.action().decreasesStock()) {
+            return -Math.abs(quantity);
+        }
+        return quantity;
+    }
+
+    private String cleanText(String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        return text.trim();
+    }
+
+    private String cleanUser(String userEmail) {
+        if (userEmail == null || userEmail.isBlank()) {
+            return "system";
+        }
+        return userEmail.trim();
     }
 }

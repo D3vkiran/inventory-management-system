@@ -4,6 +4,7 @@ import com.inventory.backend.common.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -32,6 +33,20 @@ public class InventoryController {
     @GetMapping("/{id}")
     public ApiResponse<InventoryResponse> findById(@PathVariable Long id) {
         return ApiResponse.ok(inventoryService.findById(id));
+    }
+
+    @GetMapping("/history")
+    public ApiResponse<List<InventoryMovementResponse>> findHistory() {
+        return ApiResponse.ok(inventoryService.findHistory());
+    }
+
+    @PostMapping("/actions")
+    public ApiResponse<InventoryOperationResponse> applyAction(
+            @Valid @RequestBody InventoryActionRequest request,
+            Authentication authentication
+    ) {
+        String userEmail = authentication == null ? null : authentication.getName();
+        return ApiResponse.ok(inventoryService.applyAction(request, userEmail), "Inventory action applied");
     }
 
     @PostMapping

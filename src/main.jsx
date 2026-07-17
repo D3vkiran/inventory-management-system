@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   AlertTriangle,
@@ -30,9 +30,10 @@ import {
   Warehouse,
   X
 } from "lucide-react";
+import { api } from "./api";
 import "./styles.css";
 
-const STORE_KEY = "resellerInventoryApp.v1";
+const STORE_KEY = "resellerInventoryApp.amazon.2026-07-15";
 const STATUS_TYPES = ["available", "reserved", "shipped", "sold", "damaged", "returned"];
 const LOCATIONS = ["Home Storage", "Warehouse", "Amazon FBA", "In Transit", "Returned Inventory"];
 const MARKETPLACES = ["Amazon", "eBay", "Walmart", "Shopify", "Other"];
@@ -60,47 +61,93 @@ const parseCSV = (csv) => {
 
 const seedState = () => {
   const adminId = uid("user");
-  const supplierA = uid("supplier");
-  const supplierB = uid("supplier");
-  const productA = uid("product");
-  const productB = uid("product");
-  const productC = uid("product");
 
   return {
     users: [
       { id: adminId, name: "Owner", email: "admin@example.com", password: "admin123", role: "Admin" }
     ],
     sessionUserId: null,
-    suppliers: [
-      { id: supplierA, name: "Metro Wholesale", contact: "Nina Patel", email: "orders@metro.example", phone: "555-0131", rating: 5, notes: "Reliable carton quality and quick replacements." },
-      { id: supplierB, name: "Retail Outlet Deals", contact: "Carlos Smith", email: "supply@outlet.example", phone: "555-0188", rating: 4, notes: "Best for seasonal bundles." }
-    ],
+    suppliers: [],
     products: [
-      { id: productA, sku: "AMZ-BAG-001", asin: "B0BAG001", upc: "810000100001", name: "Travel Organizer Bag", brand: "PackRight", category: "Travel", size: "M", color: "Black", image: "", reorderPoint: 12, targetStock: 80, defaultCost: 8.5, defaultPrice: 22.99 },
-      { id: productB, sku: "AMZ-KIT-044", asin: "B0KIT044", upc: "810000100044", name: "Silicone Kitchen Set", brand: "CookNest", category: "Kitchen", size: "12 pc", color: "Gray", image: "", reorderPoint: 10, targetStock: 60, defaultCost: 11, defaultPrice: 29.99 },
-      { id: productC, sku: "EBY-LMP-210", asin: "", upc: "810000100210", name: "Rechargeable Desk Lamp", brand: "BrightDock", category: "Home Office", size: "Standard", color: "White", image: "", reorderPoint: 8, targetStock: 45, defaultCost: 13.75, defaultPrice: 34.5 }
+      { id: "product_amazon_b0058z33fg_m", sku: "B0058Z33FG-M", asin: "B0058Z33FG", upc: "", name: "NIKE Performance Cushion Quarter Socks with Bag (6 Pairs)", brand: "nike", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 20, defaultCost: 12.00, defaultPrice: 0 },
+      { id: "product_amazon_b0blz59g5f", sku: "B0BLZ59G5F-", asin: "B0BLZ59G5F", upc: "", name: "Nike Sportswear Faux Fur Tote Bag Purse (10L) (Black/Sail)", brand: "nike", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 0, defaultCost: 22.40, defaultPrice: 0 },
+      { id: "product_amazon_b0cx6wn8lk_8_5", sku: "B0CX6WN8LK-8-5", asin: "B0CX6WN8LK", upc: "", name: "Nike Air Max 270 Women's Shoes", brand: "nike", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 0, defaultCost: 100.00, defaultPrice: 0 },
+      { id: "product_amazon_b0d944h3pp_8_5", sku: "B0D944H3PP-8-5", asin: "B0D944H3PP", upc: "", name: "Nike Air Jordan 1 Low Men's Shoes", brand: "nike", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 0, defaultCost: 59.48, defaultPrice: 0 },
+      { id: "product_amazon_b07fkfftqs_m", sku: "B07FKFFTQS-M", asin: "B07FKFFTQS", upc: "", name: "Nike Men's Sportswear Club T Shirt", brand: "nike", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 70, defaultCost: 14.25, defaultPrice: 0 },
+      { id: "product_amazon_b07fkfftqs_l", sku: "B07FKFFTQS-L", asin: "B07FKFFTQS", upc: "", name: "Nike Men's Sportswear Club T Shirt", brand: "nike", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 30, defaultCost: 14.25, defaultPrice: 0 },
+      { id: "product_amazon_b07fk8lhf8_m", sku: "B07FK8LHF8-M", asin: "B07FK8LHF8", upc: "", name: "Nike Women's Unisex Everyday Cushion No Show 3 Pair", brand: "nike", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 19, defaultCost: 13.50, defaultPrice: 0 },
+      { id: "product_amazon_b007oy4afq_m", sku: "B007OY4AFQ-M", asin: "B007OY4AFQ", upc: "", name: "NIKE Men's Classic", brand: "nike", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 39, defaultCost: 14.00, defaultPrice: 0 },
+      { id: "product_amazon_b007oy4ab0_l", sku: "B007OY4AB0-L", asin: "B007OY4AB0", upc: "", name: "Nike Men's Training T-Shirt", brand: "nike", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 40, defaultCost: 14.00, defaultPrice: 0 },
+      { id: "product_amazon_b09wld6364_one_size", sku: "B09WLD6364-ONE-SIZE", asin: "B09WLD6364", upc: "", name: "Nike Futura Beanie Gloves Set (Big Kids) Black", brand: "nike", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 0, defaultCost: 9.99, defaultPrice: 0 },
+      { id: "product_amazon_b09td2s7jl_m", sku: "B09TD2S7JL-M", asin: "B09TD2S7JL", upc: "", name: "Nike Men`s Everyday Cotton Stretch Boxer Briefs 3 Pack", brand: "nike", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 0, defaultCost: 26.97, defaultPrice: 0 },
+      { id: "product_amazon_b07whgj29v_0_9_months", sku: "B07WHGJ29V-0-9-MONTHS", asin: "B07WHGJ29V", upc: "", name: "Nike Jordan Baby Assorted Bodysuits 3 Pack", brand: "nike", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 0, defaultCost: 19.97, defaultPrice: 0 },
+      { id: "product_amazon_b075zy57bq_9_0", sku: "B075ZY57BQ-9-0", asin: "B075ZY57BQ", upc: "", name: "Nike Women's Trail Running Shoes", brand: "nike", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 0, defaultCost: 58.74, defaultPrice: 0 },
+      { id: "product_amazon_b0dqftg895_9_0", sku: "B0DQFTG895-9-0", asin: "B0DQFTG895", upc: "", name: "Nike Offcourt (Chicago Bears) Slide (DD0508-002, Anthracite/Marine/University Orange)", brand: "nike", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 0, defaultCost: 25.78, defaultPrice: 0 },
+      { id: "product_amazon_b07cyvdsf4_l", sku: "B07CYVDSF4-L", asin: "B07CYVDSF4", upc: "", name: "Nike Unisex Adult Everyday Plus Crew Socks", brand: "nike", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 0, defaultCost: 18.63, defaultPrice: 0 },
+      { id: "product_amazon_b07kd9pnkk_l", sku: "B07KD9PNKK-L", asin: "B07KD9PNKK", upc: "", name: "Nike Men's Pull Over Hoodie", brand: "nike", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 0, defaultCost: 39.95, defaultPrice: 0 },
+      { id: "product_amazon_b019dky3lo_l", sku: "B019DKY3LO-L", asin: "B019DKY3LO", upc: "", name: "Nike Men's Sportswear Open Hem Club Pants", brand: "nike", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 0, defaultCost: 28.16, defaultPrice: 0 },
+      { id: "product_amazon_b07bpl162d_l", sku: "B07BPL162D-L", asin: "B07BPL162D", upc: "", name: "Nike Dri-FIT Icon shorts", brand: "nike", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 20, defaultCost: 16.53, defaultPrice: 0 },
+      { id: "product_amazon_b07bpmtvpx_m", sku: "B07BPMTVPX-M", asin: "B07BPMTVPX", upc: "", name: "Nike Dri-FIT Icon", brand: "nike", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 0, defaultCost: 18.21, defaultPrice: 0 },
+      { id: "product_amazon_b0916794zh_m", sku: "B0916794ZH-M", asin: "B0916794ZH", upc: "", name: "NIKE SOCKS WHITE", brand: "nike", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 171, defaultCost: 15.98, defaultPrice: 0 },
+      { id: "product_amazon_b0bkr2ljxw_2t_4t", sku: "B0BKR2LJXW-2T-4T", asin: "B0BKR2LJXW", upc: "", name: "Nike Toddler Boys Beanie and Mittens 2 Piece Set", brand: "nike", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 0, defaultCost: 6.84, defaultPrice: 0 },
+      { id: "product_amazon_b01kirntb6_onesize", sku: "B01KIRNTB6-ONESIZE", asin: "B01KIRNTB6", upc: "", name: "Nike Pro Hyperwarm Hood", brand: "nike", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 0, defaultCost: 28.99, defaultPrice: 0 },
+      { id: "product_amazon_b077yxw813_11_0", sku: "B077YXW813-11-0", asin: "B077YXW813", upc: "", name: "Nike Men's Manoa Leather Hiking Boot", brand: "nike", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 0, defaultCost: 65.00, defaultPrice: 0 },
+      { id: "product_amazon_b00f3v0s2q_xx_large", sku: "B00F3V0S2Q-XX-LARGE", asin: "B00F3V0S2Q", upc: "", name: "Nike mens Club Swoosh Sweatpant", brand: "nike", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 0, defaultCost: 39.00, defaultPrice: 0 },
+      { id: "product_amazon_b08sqpb581_medium", sku: "B08SQPB581-MEDIUM", asin: "B08SQPB581", upc: "", name: "Nike Indy Wire-Free Sports Bra, Medium, Black/White", brand: "nike", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 0, defaultCost: 4.00, defaultPrice: 0 },
+      { id: "product_amazon_b08nx75m62_small", sku: "B08NX75M62-SMALL", asin: "B08NX75M62", upc: "", name: "Nike Women's Pro 365 Crop Tight LegginGrade School", brand: "nike", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 0, defaultCost: 16.00, defaultPrice: 0 },
+      { id: "product_amazon_b099qbvxnr_10t", sku: "B099QBVXNR-10T", asin: "B099QBVXNR", upc: "", name: "NIKE Boy's Sneakers Shoes", brand: "nike", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 10, defaultCost: 34.99, defaultPrice: 0 },
+      { id: "product_amazon_b08kwpqmfb_3_months", sku: "B08KWPQMFB-3-MONTHS", asin: "B08KWPQMFB", upc: "", name: "Nike Kids Baby Girl's Sportswear All Over Print Smiley Long Sleeve Footed Coverall (Infant)", brand: "nike", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 59, defaultCost: 9.99, defaultPrice: 0 },
+      { id: "product_amazon_b08kwpqmfb_0_3_months", sku: "B08KWPQMFB-0-3-MONTHS", asin: "B08KWPQMFB", upc: "", name: "Nike Kids Baby Girl's Sportswear All Over Print Smiley Long Sleeve Footed Coverall (Infant)", brand: "nike", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 130, defaultCost: 9.99, defaultPrice: 0 },
+      { id: "product_amazon_b003vrrh28_dimensions_16_l_x_4_w_x", sku: "B003VRRH28-DIMENSIONS-16-L-X-4-W-X-", asin: "B003VRRH28", upc: "", name: "NIKE unisex-adult Heritage Hip Pack Bag , Black/Black/White, Misc", brand: "nike", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 0, defaultCost: 16.00, defaultPrice: 0 },
+      { id: "product_amazon_b0dc6zv9ll_10_5", sku: "B0DC6ZV9LL-10-5", asin: "B0DC6ZV9LL", upc: "", name: "Nike Free Metcon 6 Women's Workout Shoes", brand: "NIKE", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 0, defaultCost: 90.00, defaultPrice: 0 },
+      { id: "product_amazon_b0csdwzp28_l", sku: "B0CSDWZP28-L", asin: "B0CSDWZP28", upc: "", name: "Nike Men's Graphics Logo Sportswear T-Shirt", brand: "NIKE", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 24, defaultCost: 17.35, defaultPrice: 0 },
+      { id: "product_amazon_b0czhqc3mn_8_5", sku: "B0CZHQC3MN-8-5", asin: "B0CZHQC3MN", upc: "", name: "Nike Air Force 1 Low Women's", brand: "NIKE", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 0, defaultCost: 69.00, defaultPrice: 0 },
+      { id: "product_amazon_b08dkyktth_10_0", sku: "B08DKYKTTH-10-0", asin: "B08DKYKTTH", upc: "", name: "Converse Unisex Chuck Taylor All Star Ox 159485 Trainers, White, 39.5 EU", brand: "CONVERSE", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 20, defaultCost: 27.00, defaultPrice: 0 },
+      { id: "product_amazon_b0dlkm88vq_one_size", sku: "B0DLKM88VQ-ONE-SIZE", asin: "B0DLKM88VQ", upc: "", name: "Nike 2024 Cuffed Dri-FIT U Peak Beanie (One Size) (Black)", brand: "NIKE", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 76, defaultCost: 17.00, defaultPrice: 0 },
+      { id: "product_amazon_b0959jt4pv_one_size", sku: "B0959JT4PV-ONE-SIZE", asin: "B0959JT4PV", upc: "", name: "Nike unisex-adult mens Balaclava", brand: "NIKE", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 112, defaultCost: 15.88, defaultPrice: 0 },
+      { id: "product_amazon_b019dlsdr8_medium", sku: "B019DLSDR8-MEDIUM", asin: "B019DLSDR8", upc: "", name: "NIKE Sportswear Men's Pullover Club Hoodie", brand: "NIKE", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 234, defaultCost: 32.99, defaultPrice: 0 },
+      { id: "product_amazon_b072bh8xjd_small", sku: "B072BH8XJD-SMALL", asin: "B072BH8XJD", upc: "", name: "Nike Kids' Everyday Cushion Crew Socks (6 Pairs), White/Black, Small", brand: "NIKE", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 0, defaultCost: 13.50, defaultPrice: 0 },
+      { id: "product_amazon_b07frgymmv_medium", sku: "B07FRGYMMV-MEDIUM", asin: "B07FRGYMMV", upc: "", name: "Nike Men's Hoodie", brand: "NIKE", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 0, defaultCost: 42.16, defaultPrice: 0 },
+      { id: "product_amazon_b07l7rzmp3_xl", sku: "B07L7RZMP3-XL", asin: "B07L7RZMP3", upc: "", name: "Nike Men's Sportswear Club Pullover Hoodie", brand: "NIKE", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 0, defaultCost: 27.93, defaultPrice: 0 },
+      { id: "product_amazon_b0841khp85_s_m", sku: "B0841KHP85-S-M", asin: "B0841KHP85", upc: "", name: "Nike Mens Tech and Grip 2.0 Gloves - Silicone Grip and Touchscreen Fingertip", brand: "NIKE", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 18, defaultCost: 7.99, defaultPrice: 0 },
+      { id: "product_amazon_b07mcq4mxv_l", sku: "B07MCQ4MXV-L", asin: "B07MCQ4MXV", upc: "", name: "NIKE Everyday Performance Training Socks (6-Pair) (L (Men's 8-12 / Women's 10-13), Low (Sport Cut) Black)", brand: "NIKE", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 0, defaultCost: 27.97, defaultPrice: 0 },
+      { id: "product_amazon_b07kr17qwz_medium", sku: "B07KR17QWZ-MEDIUM", asin: "B07KR17QWZ", upc: "", name: "Nike Brasilia Training Medium Duffle Bag", brand: "NIKE", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 0, defaultCost: 35.97, defaultPrice: 0 },
+      { id: "product_amazon_b07bpmtvpx_medium", sku: "B07BPMTVPX-MEDIUM", asin: "B07BPMTVPX", upc: "", name: "Nike Dri-FIT Icon", brand: "NIKE", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 0, defaultCost: 22.50, defaultPrice: 0 },
+      { id: "product_amazon_b08tqn2ns2_9_0", sku: "B08TQN2NS2-9-0", asin: "B08TQN2NS2", upc: "", name: "Nike Men's Court Legacy Shoe", brand: "NIKE", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 10, defaultCost: 39.58, defaultPrice: 0 },
+      { id: "product_amazon_b08tqn2ns2_11_0", sku: "B08TQN2NS2-11-0", asin: "B08TQN2NS2", upc: "", name: "Nike Men's Court Legacy Shoe", brand: "NIKE", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 10, defaultCost: 39.58, defaultPrice: 0 },
+      { id: "product_amazon_b08tqn2ns2_11_5", sku: "B08TQN2NS2-11-5", asin: "B08TQN2NS2", upc: "", name: "Nike Men's Court Legacy Shoe", brand: "NIKE", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 10, defaultCost: 39.58, defaultPrice: 0 },
+      { id: "product_amazon_b08tqn2ns2_13_0", sku: "B08TQN2NS2-13-0", asin: "B08TQN2NS2", upc: "", name: "Nike Men's Court Legacy Shoe", brand: "NIKE", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 10, defaultCost: 39.58, defaultPrice: 0 },
+      { id: "product_amazon_b08kwmtqpk_0_3_months", sku: "B08KWMTQPK-0-3-MONTHS", asin: "B08KWMTQPK", upc: "", name: "Nike Kids Baby Girl's Sportswear All Over Print Smiley Long Sleeve Footed Coverall (Infant)", brand: "nike", category: "", size: "", color: "", image: "", reorderPoint: 0, targetStock: 260, defaultCost: 9.99, defaultPrice: 0 }
     ],
     inventory: [
-      { id: uid("stock"), productId: productA, location: "Home Storage", status: "available", quantity: 28 },
-      { id: uid("stock"), productId: productA, location: "Amazon FBA", status: "available", quantity: 40 },
-      { id: uid("stock"), productId: productB, location: "Warehouse", status: "available", quantity: 16 },
-      { id: uid("stock"), productId: productB, location: "Amazon FBA", status: "reserved", quantity: 5 },
-      { id: uid("stock"), productId: productC, location: "Home Storage", status: "available", quantity: 7 },
-      { id: uid("stock"), productId: productC, location: "Returned Inventory", status: "returned", quantity: 2 }
+      { id: uid("stock"), productId: "product_amazon_b0058z33fg_m", location: "Amazon FBA", status: "available", quantity: 10 },
+      { id: uid("stock"), productId: "product_amazon_b07fkfftqs_m", location: "Amazon FBA", status: "available", quantity: 20 },
+      { id: uid("stock"), productId: "product_amazon_b07fkfftqs_l", location: "Amazon FBA", status: "available", quantity: 30 },
+      { id: uid("stock"), productId: "product_amazon_b07fk8lhf8_m", location: "Amazon FBA", status: "available", quantity: 10 },
+      { id: uid("stock"), productId: "product_amazon_b007oy4afq_m", location: "Amazon FBA", status: "available", quantity: 20 },
+      { id: uid("stock"), productId: "product_amazon_b007oy4ab0_l", location: "Amazon FBA", status: "available", quantity: 20 },
+      { id: uid("stock"), productId: "product_amazon_b07bpl162d_l", location: "Amazon FBA", status: "available", quantity: 10 },
+      { id: uid("stock"), productId: "product_amazon_b0916794zh_m", location: "Amazon FBA", status: "available", quantity: 125 },
+      { id: uid("stock"), productId: "product_amazon_b099qbvxnr_10t", location: "Amazon FBA", status: "available", quantity: 10 },
+      { id: uid("stock"), productId: "product_amazon_b08kwpqmfb_3_months", location: "Amazon FBA", status: "available", quantity: 50 },
+      { id: uid("stock"), productId: "product_amazon_b08kwpqmfb_0_3_months", location: "Amazon FBA", status: "available", quantity: 130 },
+      { id: uid("stock"), productId: "product_amazon_b0csdwzp28_l", location: "Amazon FBA", status: "available", quantity: 12 },
+      { id: uid("stock"), productId: "product_amazon_b08dkyktth_10_0", location: "Amazon FBA", status: "available", quantity: 10 },
+      { id: uid("stock"), productId: "product_amazon_b0dlkm88vq_one_size", location: "Amazon FBA", status: "available", quantity: 40 },
+      { id: uid("stock"), productId: "product_amazon_b0959jt4pv_one_size", location: "Amazon FBA", status: "available", quantity: 86 },
+      { id: uid("stock"), productId: "product_amazon_b019dlsdr8_medium", location: "Amazon FBA", status: "available", quantity: 212 },
+      { id: uid("stock"), productId: "product_amazon_b0841khp85_s_m", location: "Amazon FBA", status: "available", quantity: 18 },
+      { id: uid("stock"), productId: "product_amazon_b08tqn2ns2_9_0", location: "Amazon FBA", status: "available", quantity: 10 },
+      { id: uid("stock"), productId: "product_amazon_b08tqn2ns2_11_0", location: "Amazon FBA", status: "available", quantity: 10 },
+      { id: uid("stock"), productId: "product_amazon_b08tqn2ns2_11_5", location: "Amazon FBA", status: "available", quantity: 10 },
+      { id: uid("stock"), productId: "product_amazon_b08tqn2ns2_13_0", location: "Amazon FBA", status: "available", quantity: 10 },
+      { id: uid("stock"), productId: "product_amazon_b08kwmtqpk_0_3_months", location: "Amazon FBA", status: "available", quantity: 130 }
     ],
-    purchases: [
-      { id: uid("purchase"), productId: productA, supplierId: supplierA, date: today(), quantity: 68, unitCost: 8.5, invoice: "MW-1007", location: "Home Storage", notes: "Opening batch." },
-      { id: uid("purchase"), productId: productB, supplierId: supplierB, date: today(), quantity: 21, unitCost: 11, invoice: "ROD-231", location: "Warehouse", notes: "Promo lot." }
-    ],
-    sales: [
-      { id: uid("sale"), productId: productA, date: today(), marketplace: "Amazon", orderId: "112-77001", quantity: 6, salePrice: 22.99, fees: 4.25, sourceLocation: "Amazon FBA", notes: "FBA order batch." },
-      { id: uid("sale"), productId: productB, date: today(), marketplace: "Amazon", orderId: "112-77002", quantity: 5, salePrice: 29.99, fees: 5.5, sourceLocation: "Amazon FBA", notes: "Reserved stock fulfilled." }
-    ],
-    shipments: [
-      { id: uid("ship"), productId: productA, name: "FBA June Restock", quantity: 20, from: "Home Storage", to: "Amazon FBA", status: "Received", shipDate: today(), receiveDate: today(), notes: "Received by Amazon." }
-    ],
+    purchases: [],
+    sales: [],
+    shipments: [],
     activities: [
-      { id: uid("activity"), at: new Date().toISOString(), user: "System", action: "Sample workspace created" }
+      { id: uid("activity"), at: new Date().toISOString(), user: "System", action: "Amazon inventory migration seed created" }
     ]
   };
 };
@@ -108,7 +155,8 @@ const seedState = () => {
 function loadState() {
   try {
     const saved = localStorage.getItem(STORE_KEY);
-    return saved ? JSON.parse(saved) : seedState();
+    const parsed = saved ? JSON.parse(saved) : seedState();
+    return api.hasToken() ? parsed : { ...parsed, sessionUserId: null, products: [], inventory: [] };
   } catch {
     return seedState();
   }
@@ -124,6 +172,8 @@ function App() {
   const [supplierFilters, setSupplierFilters] = useState({ rating: "All", purchaseCount: "All" });
   const [reportFilters, setReportFilters] = useState({ from: "", to: "", marketplace: "All", supplier: "All", category: "All" });
   const [modal, setModal] = useState(null);
+  const [loadingRemoteData, setLoadingRemoteData] = useState(false);
+  const [remoteError, setRemoteError] = useState("");
 
   const currentUser = state.users.find((user) => user.id === state.sessionUserId);
 
@@ -139,6 +189,28 @@ function App() {
       ...draft.activities
     ].slice(0, 120)
   });
+
+  const loadRemoteProductsAndInventory = async (baseState = state) => {
+    setLoadingRemoteData(true);
+    try {
+      const [products, inventory] = await Promise.all([api.getProducts(), api.getInventory()]);
+      const next = withActivity({ ...baseState, products, inventory }, "Loaded products and inventory from backend");
+      saveState(next);
+      setRemoteError("");
+      return next;
+    } catch (error) {
+      setRemoteError(error.message || "Backend data load failed.");
+      return baseState;
+    } finally {
+      setLoadingRemoteData(false);
+    }
+  };
+
+  useEffect(() => {
+    if (currentUser && api.hasToken()) {
+      loadRemoteProductsAndInventory();
+    }
+  }, []);
 
   const updateStock = (inventory, productId, location, status, delta) => {
     const index = inventory.findIndex((item) => item.productId === productId && item.location === location && item.status === status);
@@ -181,23 +253,32 @@ function App() {
     return text.includes(query.toLowerCase()) && locationOk && statusOk;
   });
 
-  const submitLogin = (payload, registering) => {
+  const submitLogin = async (payload, registering) => {
     if (registering) {
-      if (state.users.some((user) => user.email.toLowerCase() === payload.email.toLowerCase())) return false;
-      const user = { id: uid("user"), name: payload.name, email: payload.email, password: payload.password, role: payload.role };
-      saveState(withActivity({ ...state, users: [...state.users, user], sessionUserId: user.id }, `Registered ${user.name}`));
-      return true;
+      setRemoteError("Account creation is handled in the backend admin workflow.");
+      return false;
     }
-    const user = state.users.find((item) => item.email.toLowerCase() === payload.email.toLowerCase() && item.password === payload.password);
-    if (!user) return false;
-    saveState(withActivity({ ...state, sessionUserId: user.id }, `Signed in as ${user.name}`));
-    return true;
+    try {
+      const user = await api.login(payload);
+      const normalizedUser = { id: user.id, name: user.name, email: user.email, password: "", role: user.role };
+      const users = [...state.users.filter((item) => item.email.toLowerCase() !== normalizedUser.email.toLowerCase()), normalizedUser];
+      const signedInState = withActivity({ ...state, users, sessionUserId: normalizedUser.id }, `Signed in as ${normalizedUser.name}`);
+      await loadRemoteProductsAndInventory(signedInState);
+      return true;
+    } catch (error) {
+      setRemoteError(error.message || "Sign-in failed.");
+      return false;
+    }
   };
 
-  const addProduct = (payload) => {
-    const product = { id: uid("product"), ...payload, reorderPoint: Number(payload.reorderPoint), targetStock: Number(payload.targetStock), defaultCost: Number(payload.defaultCost), defaultPrice: Number(payload.defaultPrice) };
-    saveState(withActivity({ ...state, products: [...state.products, product] }, `Added product ${product.sku}`));
-    setModal(null);
+  const addProduct = async (payload) => {
+    try {
+      const product = await api.createProduct(payload);
+      await loadRemoteProductsAndInventory(withActivity(state, `Added product ${product.sku}`));
+      setModal(null);
+    } catch (error) {
+      setRemoteError(error.message || "Product save failed.");
+    }
   };
 
   const addSupplier = (payload) => {
@@ -222,8 +303,33 @@ function App() {
 
   const addSale = (payload) => {
     const sale = { id: uid("sale"), ...payload, quantity: Number(payload.quantity), salePrice: Number(payload.salePrice), fees: Number(payload.fees || 0) };
-    let inventory = updateStock(state.inventory, sale.productId, sale.sourceLocation, "available", -sale.quantity);
-    inventory = updateStock(inventory, sale.productId, sale.sourceLocation, "reserved", -sale.quantity);
+    const availableQty = Number(
+  state.inventory.find(
+    (item) =>
+      item.productId === sale.productId &&
+      item.location === sale.sourceLocation &&
+      item.status === "available"
+  )?.quantity || 0
+);
+
+const fromAvailable = Math.min(sale.quantity, availableQty);
+const fromReserved = sale.quantity - fromAvailable;
+
+let inventory = updateStock(
+  state.inventory,
+  sale.productId,
+  sale.sourceLocation,
+  "available",
+  -fromAvailable
+);
+
+inventory = updateStock(
+  inventory,
+  sale.productId,
+  sale.sourceLocation,
+  "reserved",
+  -fromReserved
+);
     inventory = updateStock(inventory, sale.productId, sale.sourceLocation, "sold", sale.quantity);
     saveState(withActivity({ ...state, sales: [...state.sales, sale], inventory }, `Recorded ${sale.marketplace} sale ${sale.orderId || ""}`.trim()));
     setModal(null);
@@ -249,10 +355,14 @@ function App() {
     setModal(null);
   };
 
-  const adjustInventory = (payload) => {
-    const inventory = updateStock(state.inventory, payload.productId, payload.location, payload.status, Number(payload.quantity));
-    saveState(withActivity({ ...state, inventory }, `Adjusted inventory by ${payload.quantity} units`));
-    setModal(null);
+  const adjustInventory = async (payload) => {
+    try {
+      await api.createInventory(payload);
+      await loadRemoteProductsAndInventory(withActivity(state, `Adjusted inventory by ${payload.quantity} units`));
+      setModal(null);
+    } catch (error) {
+      setRemoteError(error.message || "Inventory save failed.");
+    }
   };
 
   const replaceCompanyData = (nextData) => {
@@ -336,11 +446,16 @@ function App() {
     URL.revokeObjectURL(link.href);
   };
 
-  if (!currentUser) return <AuthScreen onSubmit={submitLogin} />;
+  const logout = () => {
+    api.clearToken();
+    saveState({ ...state, sessionUserId: null, products: [], inventory: [] });
+  };
+
+  if (!currentUser) return <AuthScreen onSubmit={submitLogin} apiError={remoteError} />;
 
   return (
     <div className="app-shell">
-      <Sidebar view={view} setView={setView} user={currentUser} logout={() => saveState({ ...state, sessionUserId: null })} />
+      <Sidebar view={view} setView={setView} user={currentUser} logout={logout} />
       <main className="workspace">
         <header className="topbar">
           <div>
@@ -355,6 +470,8 @@ function App() {
             <button className="icon-button" title="Export CSV" onClick={exportCsv}><Download size={18} /></button>
           </div>
         </header>
+        {remoteError && <p className="form-error">{remoteError}</p>}
+        {loadingRemoteData && <p className="success-message">Loading backend inventory...</p>}
 
         {view === "dashboard" && <Dashboard state={state} metrics={metrics} productQty={productQty} productCost={productCost} setView={setView} setModal={setModal} />}
         {view === "products" && <Products products={visibleProducts} state={state} productQty={productQty} productCost={productCost} filters={filters} setFilters={setFilters} setModal={setModal} />}
@@ -378,14 +495,14 @@ function App() {
   );
 }
 
-function AuthScreen({ onSubmit }) {
+function AuthScreen({ onSubmit, apiError }) {
   const [registering, setRegistering] = useState(false);
   const [error, setError] = useState("");
-  const [form, setForm] = useState({ name: "", email: "admin@example.com", password: "admin123", role: "Admin" });
-  const submit = (event) => {
+  const [form, setForm] = useState({ name: "", email: "owner@inventory.local", password: "ChangeMe123!", role: "Admin" });
+  const submit = async (event) => {
     event.preventDefault();
-    const ok = onSubmit(form, registering);
-    setError(ok ? "" : registering ? "That email already exists." : "Sign-in failed. Try admin@example.com / admin123.");
+    const ok = await onSubmit(form, registering);
+    setError(ok ? "" : registering ? "Account creation is not available here." : "Sign-in failed. Check backend credentials.");
   };
   return (
     <main className="auth-page">
@@ -407,7 +524,7 @@ function AuthScreen({ onSubmit }) {
         <Field label="Email" type="email" value={form.email} onChange={(value) => setForm({ ...form, email: value })} required />
         <Field label="Password" type="password" value={form.password} onChange={(value) => setForm({ ...form, password: value })} required />
         {registering && <Select label="Role" value={form.role} onChange={(value) => setForm({ ...form, role: value })} options={["Admin", "Manager", "Staff"]} />}
-        {error && <p className="form-error">{error}</p>}
+        {(error || apiError) && <p className="form-error">{error || apiError}</p>}
         <button className="primary-button" type="submit">{registering ? "Register" : "Sign in"}</button>
         <button className="link-button" type="button" onClick={() => setRegistering(!registering)}>{registering ? "Use existing account" : "Create another user"}</button>
       </form>

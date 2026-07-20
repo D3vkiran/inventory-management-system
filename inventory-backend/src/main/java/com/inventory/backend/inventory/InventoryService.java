@@ -89,12 +89,15 @@ public class InventoryService {
                 });
 
         int previousStock = item.getQuantity();
+        if (request.action().resetsStock()) {
+            delta = -previousStock;
+        }
         int newStock = previousStock + delta;
         if (newStock < 0) {
             throw new IllegalArgumentException("Inventory action rejected: quantity exceeds available stock. Available stock is " + previousStock + ".");
         }
 
-        if (delta < 0 && request.reason() == null) {
+        if ((delta < 0 || request.action().resetsStock()) && request.reason() == null) {
             throw new IllegalArgumentException("Reason is required when inventory is removed.");
         }
 
@@ -108,7 +111,7 @@ public class InventoryService {
         movement.setQuantity(delta);
         movement.setPreviousStock(previousStock);
         movement.setNewStock(newStock);
-        movement.setReason(delta < 0 ? request.reason() : null);
+        movement.setReason(delta < 0 || request.action().resetsStock() ? request.reason() : null);
         movement.setNotes(cleanText(request.notes()));
         movement.setUserEmail(cleanUser(userEmail));
         movement.setOccurredAt(Instant.now());
@@ -129,6 +132,9 @@ public class InventoryService {
 
     private int calculateDelta(InventoryActionRequest request) {
         int quantity = request.quantity();
+        if (request.action().resetsStock()) {
+            return 0;
+        }
         if (quantity == 0) {
             throw new IllegalArgumentException("Quantity must not be zero.");
         }

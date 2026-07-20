@@ -45,7 +45,8 @@ const INVENTORY_ACTIONS = [
   { value: "DAMAGED", label: "Damaged" },
   { value: "LOST_MISSING", label: "Lost / Missing" },
   { value: "GIVEAWAY_SAMPLE", label: "Giveaway / Sample" },
-  { value: "MANUAL_ADJUSTMENT", label: "Manual Adjustment" }
+  { value: "MANUAL_ADJUSTMENT", label: "Manual Adjustment" },
+  { value: "RESET_STOCK", label: "Reset Stock" }
 ];
 const REMOVAL_ACTIONS = ["SOLD", "RETURN_TO_SUPPLIER", "DUMP_DISPOSE", "DAMAGED", "LOST_MISSING", "GIVEAWAY_SAMPLE"];
 const REMOVAL_REASONS = [
@@ -56,6 +57,13 @@ const REMOVAL_REASONS = [
   { value: "DESTROYED", label: "Destroyed" },
   { value: "OTHER", label: "Other" }
 ];
+const RESET_STOCK_REASONS = [
+  { value: "INVENTORY_AUDIT", label: "Inventory Audit" },
+  { value: "WAREHOUSE_CLEANUP", label: "Warehouse Cleanup" },
+  { value: "EXPIRED_INVENTORY", label: "Expired Inventory" },
+  { value: "INCORRECT_COUNT", label: "Incorrect Count" },
+  { value: "OTHER", label: "Other" }
+];
 const LOCATIONS = ["Home Storage", "Warehouse", "Amazon FBA", "In Transit", "Returned Inventory"];
 const MARKETPLACES = ["Amazon", "eBay", "Walmart", "Shopify", "Other"];
 const SHIPMENT_STATUS = ["Draft", "Packed", "Dispatched", "In Transit", "Received", "Closed"];
@@ -64,7 +72,7 @@ const uid = (prefix) => `${prefix}_${Math.random().toString(36).slice(2, 9)}_${D
 const money = (value) => `$${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const today = () => new Date().toISOString().slice(0, 10);
 const inventoryActionLabel = (value) => INVENTORY_ACTIONS.find((item) => item.value === value)?.label || value;
-const inventoryReasonLabel = (value) => REMOVAL_REASONS.find((item) => item.value === value)?.label || value || "";
+const inventoryReasonLabel = (value) => [...REMOVAL_REASONS, ...RESET_STOCK_REASONS].find((item) => item.value === value)?.label || value || "";
 
 const parseCSV = (csv) => {
   const lines = csv.trim().split('\n');
@@ -276,7 +284,9 @@ function App() {
     const text = `${product.sku} ${product.asin} ${product.upc} ${product.name} ${product.brand} ${product.category}`.toLowerCase();
     const stockRows = state.inventory.filter((item) => item.productId === product.id);
     const locationOk = filters.location === "All" || stockRows.some((item) => item.location === filters.location);
-    const statusOk = filters.status === "All" || stockRows.some((item) => item.status === filters.status);
+    const available = productQty(product.id, "available");
+    const stockStatus = available > 20 ? "In Stock" : available > 0 ? "Low Stock" : "Out of Stock";
+    const statusOk = filters.status === "All" || filters.status === stockStatus;
     return text.includes(query.toLowerCase()) && locationOk && statusOk;
   });
 
@@ -523,10 +533,10 @@ inventory = updateStock(
             <h1>{navItems.find((item) => item.id === view)?.label}</h1>
           </div>
           <div className="top-actions">
-            <div className="searchbox">
+            {view !== "products" && <div className="searchbox">
               <Search size={18} />
               <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search SKU, ASIN, UPC, brand, supplier..." />
-            </div>
+            </div>}
             <button className="icon-button" title="Export CSV" onClick={exportCsv}><Download size={18} /></button>
           </div>
         </header>
@@ -534,7 +544,7 @@ inventory = updateStock(
         {loadingRemoteData && <p className="success-message">Loading backend inventory...</p>}
 
         {view === "dashboard" && <Dashboard state={state} metrics={metrics} productQty={productQty} productCost={productCost} setView={setView} setModal={setModal} />}
-        {view === "products" && <Products products={visibleProducts} state={state} productQty={productQty} productCost={productCost} filters={filters} setFilters={setFilters} setModal={setModal} onDelete={deleteProduct} />}
+        {view === "products" && <Products products={visibleProducts} state={state} query={query} setQuery={setQuery} productQty={productQty} productCost={productCost} filters={filters} setFilters={setFilters} setModal={setModal} onDelete={deleteProduct} />}
         {view === "inventory-history" && <InventoryHistoryPage state={state} query={query} filters={historyFilters} setFilters={setHistoryFilters} selectedIds={selectedHistoryIds} setSelectedIds={setSelectedHistoryIds} onDeleteSelected={deleteSelectedHistory} setRemoteError={setRemoteError} />}
         {view === "purchases" && <Purchases state={state} query={query} filters={purchaseFilters} setFilters={setPurchaseFilters} setModal={setModal} onDelete={deletePurchase} />}
         {view === "sales" && <Sales state={state} query={query} filters={saleFilters} setFilters={setSaleFilters} productCost={productCost} setModal={setModal} onDelete={deleteSale} />}
@@ -550,7 +560,7 @@ inventory = updateStock(
       {modal === "purchase" && <PurchaseModal state={state} onClose={() => setModal(null)} onSave={addPurchase} />}
       {modal === "sale" && <SaleModal state={state} onClose={() => setModal(null)} onSave={addSale} />}
       {modal === "shipment" && <ShipmentModal state={state} onClose={() => setModal(null)} onSave={addShipment} />}
-      {modal === "adjust" && <AdjustModal state={state} onClose={() => setModal(null)} onSave={adjustInventory} />}
+      {(modal === "adjust" || modal?.type === "adjust") && <AdjustModal state={state} productId={modal?.productId} onClose={() => setModal(null)} onSave={adjustInventory} />}
       {modal?.type === "purchaseDetail" && <PurchaseDetailModal state={state} purchase={modal.record} onClose={() => setModal(null)} />}
       {modal?.type === "saleDetail" && <SaleDetailModal state={state} sale={modal.record} productCost={productCost} onClose={() => setModal(null)} />}
     </div>
@@ -678,14 +688,18 @@ function Dashboard({ state, metrics, productQty, productCost, setView, setModal 
   );
 }
 
-function Products({ products, state, productQty, productCost, filters, setFilters, setModal, onDelete }) {
+function Products({ products, state, query, setQuery, productQty, productCost, filters, setFilters, setModal, onDelete }) {
   return (
     <section className="stack">
-      <div className="toolbar">
+      <div className="toolbar products-toolbar">
+        <div className="searchbox products-search">
+          <Search size={18} />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search products, SKU, ASIN..." />
+        </div>
         <div className="filters">
           <Filter size={18} />
           <select value={filters.location} onChange={(event) => setFilters({ ...filters, location: event.target.value })}><option>All</option>{LOCATIONS.map((item) => <option key={item}>{item}</option>)}</select>
-          <select value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}><option>All</option>{STATUS_TYPES.map((item) => <option key={item}>{item}</option>)}</select>
+          <select value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}><option>All</option>{["In Stock", "Low Stock", "Out of Stock"].map((item) => <option key={item}>{item}</option>)}</select>
         </div>
         <div className="button-row">
           <button onClick={() => setModal("adjust")}><PackageCheck size={16} />Adjust stock</button>
@@ -699,22 +713,32 @@ function Products({ products, state, productQty, productCost, filters, setFilter
           const statusClass = available > 20 ? "good" : available > 0 ? "warn" : "danger";
           return (
           <article className="product-card" key={product.id}>
-            <div className="product-card-head">
-              <div className="product-art">{product.image ? <img src={product.image} alt="" /> : <Package />}</div>
-              <div className="row-actions">
-                  <button title="Edit product" onClick={() => setModal({ type: "productEdit", product })}><Pencil size={16} /></button>
-                <button className="danger-button" title="Delete product" onClick={() => onDelete(product)}><Trash2 size={16} /></button>
-              </div>
-            </div>
+            <div className="product-art product-art-large">{product.image ? <img src={product.image} alt="" /> : <Package />}</div>
             <div>
               <p className="sku">{product.sku}</p>
               <h2>{product.name}</h2>
-              <p>{product.brand} · {product.category} · {product.size} · {product.color}</p>
+              <div className="product-meta">
+                <span>{product.brand || "No brand"}</span>
+                <span>{product.category || "No category"}</span>
+                <span>{product.size || "No size"}</span>
+                <span>{product.color || "No color"}</span>
+              </div>
             </div>
-            <div className="stock-pills">
-              <span>Available Stock <strong>{available}</strong></span>
-              <span>Stock Status <strong className={`stock-status ${statusClass}`}>● {status}</strong></span>
-              <span>Inventory Value <strong>{money(available * productCost(product.id))}</strong></span>
+            <div className={`stock-badge ${statusClass}`}><span />{status}</div>
+            <div className="stock-summary">
+              <div>
+                <span>Available Stock</span>
+                <strong>{available}</strong>
+              </div>
+              <div>
+                <span>Inventory Value</span>
+                <strong>{money(available * productCost(product.id))}</strong>
+              </div>
+            </div>
+            <div className="product-actions">
+              <button onClick={() => setModal({ type: "adjust", productId: product.id })}><PackageCheck size={16} />Adjust Stock</button>
+              <button onClick={() => setModal({ type: "productEdit", product })}><Pencil size={16} />Edit</button>
+              <button className="danger-button" onClick={() => onDelete(product)}><Trash2 size={16} />Delete</button>
             </div>
             {available <= product.reorderPoint && <div className="warning"><AlertTriangle size={16} />Reorder suggested</div>}
           </article>
@@ -1241,19 +1265,25 @@ function ShipmentModal({ state, onClose, onSave }) {
   return <Modal title="Create shipment" onClose={onClose}><SmartForm form={form} setForm={setForm} onSave={onSave} fields={["productId", "name", "quantity", "from", "to", "status", "shipDate", "receiveDate", "notes"]} state={state} /></Modal>;
 }
 
-function AdjustModal({ state, onClose, onSave }) {
-  const [form, setForm] = useState({ productId: state.products[0]?.id || "", location: "Home Storage", action: "RECEIVE_STOCK", quantity: 1, reason: "", notes: "" });
+function AdjustModal({ state, productId, onClose, onSave }) {
+  const [form, setForm] = useState({ productId: productId || state.products[0]?.id || "", location: "Home Storage", action: "RECEIVE_STOCK", quantity: 1, reason: "", notes: "" });
   const [error, setError] = useState("");
   const quantity = Number(form.quantity || 0);
-  const reasonRequired = REMOVAL_ACTIONS.includes(form.action) || (form.action === "MANUAL_ADJUSTMENT" && quantity < 0);
+  const currentStock = state.inventory
+    .filter((item) => String(item.productId) === String(form.productId) && item.location === form.location && item.status === "available")
+    .reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+  const isResetStock = form.action === "RESET_STOCK";
+  const reasonRequired = isResetStock || REMOVAL_ACTIONS.includes(form.action) || (form.action === "MANUAL_ADJUSTMENT" && quantity < 0);
+  const reasonOptions = isResetStock ? RESET_STOCK_REASONS : REMOVAL_REASONS;
   const submit = (event) => {
     event.preventDefault();
     if (reasonRequired && !form.reason) {
-      setError("Select a reason before removing inventory.");
+      setError("Select a reason before saving this inventory action.");
       return;
     }
+    if (isResetStock && !window.confirm("Reset stock to zero?")) return;
     setError("");
-    onSave({ ...form, reason: reasonRequired ? form.reason : "", notes: form.notes });
+    onSave({ ...form, quantity: isResetStock ? 0 : form.quantity, reason: reasonRequired ? form.reason : "", notes: form.notes });
   };
 
   return (
@@ -1262,11 +1292,13 @@ function AdjustModal({ state, onClose, onSave }) {
         <Select label="Product" value={form.productId} onChange={(next) => setForm({ ...form, productId: next })} options={state.products.map((item) => ({ label: `${item.sku} · ${item.name}`, value: item.id }))} />
         <Select label="Location" value={form.location} onChange={(next) => setForm({ ...form, location: next })} options={LOCATIONS} />
         <Select label="Inventory Action" value={form.action} onChange={(next) => setForm({ ...form, action: next, reason: "" })} options={INVENTORY_ACTIONS} />
-        <label className="field">
+        {isResetStock && <Detail label="Current Stock" value={currentStock} />}
+        {isResetStock && <Detail label="New Stock" value="0" />}
+        {!isResetStock && <label className="field">
           <span>Quantity</span>
           <input type="number" value={form.quantity} required step="1" onChange={(event) => setForm({ ...form, quantity: event.target.value })} />
-        </label>
-        {reasonRequired && <Select label="Reason" value={form.reason} onChange={(next) => setForm({ ...form, reason: next })} options={[{ value: "", label: "Select reason" }, ...REMOVAL_REASONS]} />}
+        </label>}
+        {reasonRequired && <Select label="Reason" value={form.reason} onChange={(next) => setForm({ ...form, reason: next })} options={[{ value: "", label: "Select reason" }, ...reasonOptions]} />}
         {reasonRequired && <label className="field"><span>Notes</span><textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>}
         {error && <p className="form-error">{error}</p>}
         <button className="primary-button" type="submit"><Check size={16} />Save</button>

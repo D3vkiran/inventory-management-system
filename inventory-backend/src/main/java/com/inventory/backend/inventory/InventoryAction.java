@@ -9,7 +9,8 @@ public enum InventoryAction {
     DAMAGED(-1),
     LOST_MISSING(-1),
     GIVEAWAY_SAMPLE(-1),
-    MANUAL_ADJUSTMENT(0);
+    MANUAL_ADJUSTMENT(0),
+    RESET_STOCK(0);
 
     private final int direction;
 
@@ -23,5 +24,9 @@ public enum InventoryAction {
 
     public boolean decreasesStock() {
         return direction < 0;
+    }
+
+    public boolean resetsStock() {
+        return this == RESET_STOCK;
     }
 }

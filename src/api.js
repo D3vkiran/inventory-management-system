@@ -141,6 +141,9 @@ export const api = {
     const movements = await request("/inventory/history");
     return movements.map(normalizeInventoryMovement);
   },
+  deleteInventoryHistory(id) {
+    return request(`/inventory/history/${id}`, { method: "DELETE" });
+  },
   async applyInventoryAction(item) {
     const result = await request("/inventory/actions", {
       method: "POST",

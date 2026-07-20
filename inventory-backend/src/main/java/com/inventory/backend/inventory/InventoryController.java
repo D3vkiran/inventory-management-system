@@ -40,6 +40,12 @@ public class InventoryController {
         return ApiResponse.ok(inventoryService.findHistory());
     }
 
+    @DeleteMapping("/history/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteHistory(@PathVariable Long id) {
+        inventoryService.deleteHistory(id);
+    }
+
     @PostMapping("/actions")
     public ApiResponse<InventoryOperationResponse> applyAction(
             @Valid @RequestBody InventoryActionRequest request,

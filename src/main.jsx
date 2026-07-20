@@ -17,6 +17,7 @@ import {
   MapPin,
   Package,
   PackageCheck,
+  Pencil,
   Plus,
   ReceiptText,
   Search,
@@ -195,6 +196,8 @@ function App() {
   const [saleFilters, setSaleFilters] = useState({ from: "", to: "", marketplace: "All", product: "All" });
   const [supplierFilters, setSupplierFilters] = useState({ rating: "All", purchaseCount: "All" });
   const [reportFilters, setReportFilters] = useState({ from: "", to: "", marketplace: "All", supplier: "All", category: "All" });
+  const [historyFilters, setHistoryFilters] = useState({ action: "All", product: "All", date: "" });
+  const [selectedHistoryIds, setSelectedHistoryIds] = useState([]);
   const [modal, setModal] = useState(null);
   const [loadingRemoteData, setLoadingRemoteData] = useState(false);
   const [remoteError, setRemoteError] = useState("");
@@ -305,6 +308,26 @@ function App() {
     }
   };
 
+  const updateProduct = async (productId, payload) => {
+    try {
+      const product = await api.updateProduct(productId, payload);
+      await loadRemoteProductsAndInventory(withActivity(state, `Updated product ${product.sku}`));
+      setModal(null);
+    } catch (error) {
+      setRemoteError(error.message || "Product update failed.");
+    }
+  };
+
+  const deleteProduct = async (product) => {
+    if (!window.confirm(`Delete product ${product.sku}?\n\nThis will not delete inventory history records.`)) return;
+    try {
+      await api.deleteProduct(product.id);
+      await loadRemoteProductsAndInventory(withActivity(state, `Deleted product ${product.sku}`));
+    } catch (error) {
+      setRemoteError(error.message || "Product delete failed.");
+    }
+  };
+
   const addSupplier = (payload) => {
     const supplier = { id: uid("supplier"), ...payload, rating: Number(payload.rating || 3) };
     saveState(withActivity({ ...state, suppliers: [...state.suppliers, supplier] }, `Added supplier ${supplier.name}`));
@@ -386,6 +409,19 @@ inventory = updateStock(
       setModal(null);
     } catch (error) {
       setRemoteError(error.message || "Inventory save failed.");
+    }
+  };
+
+  const deleteSelectedHistory = async () => {
+    if (!selectedHistoryIds.length) return;
+    const confirmed = window.confirm(`Delete ${selectedHistoryIds.length} selected history records?\n\nThis action will NOT change current inventory.`);
+    if (!confirmed) return;
+    try {
+      await Promise.all(selectedHistoryIds.map((id) => api.deleteInventoryHistory(id)));
+      setSelectedHistoryIds([]);
+      await loadRemoteProductsAndInventory(withActivity(state, `Deleted ${selectedHistoryIds.length} inventory history records`));
+    } catch (error) {
+      setRemoteError(error.message || "Inventory history delete failed.");
     }
   };
 
@@ -498,7 +534,8 @@ inventory = updateStock(
         {loadingRemoteData && <p className="success-message">Loading backend inventory...</p>}
 
         {view === "dashboard" && <Dashboard state={state} metrics={metrics} productQty={productQty} productCost={productCost} setView={setView} setModal={setModal} />}
-        {view === "products" && <Products products={visibleProducts} state={state} productQty={productQty} productCost={productCost} filters={filters} setFilters={setFilters} setModal={setModal} />}
+        {view === "products" && <Products products={visibleProducts} state={state} productQty={productQty} productCost={productCost} filters={filters} setFilters={setFilters} setModal={setModal} onDelete={deleteProduct} />}
+        {view === "inventory-history" && <InventoryHistoryPage state={state} query={query} filters={historyFilters} setFilters={setHistoryFilters} selectedIds={selectedHistoryIds} setSelectedIds={setSelectedHistoryIds} onDeleteSelected={deleteSelectedHistory} setRemoteError={setRemoteError} />}
         {view === "purchases" && <Purchases state={state} query={query} filters={purchaseFilters} setFilters={setPurchaseFilters} setModal={setModal} onDelete={deletePurchase} />}
         {view === "sales" && <Sales state={state} query={query} filters={saleFilters} setFilters={setSaleFilters} productCost={productCost} setModal={setModal} onDelete={deleteSale} />}
         {view === "shipments" && <Shipments state={state} setModal={setModal} />}
@@ -508,6 +545,7 @@ inventory = updateStock(
       </main>
 
       {modal === "product" && <ProductModal onClose={() => setModal(null)} onSave={addProduct} />}
+      {modal?.type === "productEdit" && <ProductModal product={modal.product} onClose={() => setModal(null)} onSave={(payload) => updateProduct(modal.product.id, payload)} />}
       {modal === "supplier" && <SupplierModal onClose={() => setModal(null)} onSave={addSupplier} />}
       {modal === "purchase" && <PurchaseModal state={state} onClose={() => setModal(null)} onSave={addPurchase} />}
       {modal === "sale" && <SaleModal state={state} onClose={() => setModal(null)} onSave={addSale} />}
@@ -559,6 +597,7 @@ function AuthScreen({ onSubmit, apiError }) {
 const navItems = [
   { id: "dashboard", label: "Dashboard", icon: LineChart },
   { id: "products", label: "Products & Stock", icon: Boxes },
+  { id: "inventory-history", label: "Inventory History", icon: ClipboardList },
   { id: "purchases", label: "Purchases", icon: ReceiptText },
   { id: "sales", label: "Sales", icon: ShoppingCart },
   { id: "shipments", label: "FBA Shipments", icon: Truck },
@@ -639,20 +678,7 @@ function Dashboard({ state, metrics, productQty, productCost, setView, setModal 
   );
 }
 
-function Products({ products, state, productQty, productCost, filters, setFilters, setModal }) {
-  const historyRows = (state.inventoryHistory || []).slice(0, 25).map((item) => [
-    item.timestamp ? new Date(item.timestamp).toLocaleString() : "",
-    item.sku,
-    item.productName,
-    inventoryActionLabel(item.action),
-    item.quantity > 0 ? `+${item.quantity}` : item.quantity,
-    item.previousStock,
-    item.newStock,
-    inventoryReasonLabel(item.reason),
-    item.notes,
-    item.user
-  ]);
-
+function Products({ products, state, productQty, productCost, filters, setFilters, setModal, onDelete }) {
   return (
     <section className="stack">
       <div className="toolbar">
@@ -667,31 +693,107 @@ function Products({ products, state, productQty, productCost, filters, setFilter
         </div>
       </div>
       <div className="product-grid">
-        {products.map((product) => (
+        {products.map((product) => {
+          const available = productQty(product.id, "available");
+          const status = available > 20 ? "In Stock" : available > 0 ? "Low Stock" : "Out of Stock";
+          const statusClass = available > 20 ? "good" : available > 0 ? "warn" : "danger";
+          return (
           <article className="product-card" key={product.id}>
-            <div className="product-art">{product.image ? <img src={product.image} alt="" /> : <Package />}</div>
+            <div className="product-card-head">
+              <div className="product-art">{product.image ? <img src={product.image} alt="" /> : <Package />}</div>
+              <div className="row-actions">
+                  <button title="Edit product" onClick={() => setModal({ type: "productEdit", product })}><Pencil size={16} /></button>
+                <button className="danger-button" title="Delete product" onClick={() => onDelete(product)}><Trash2 size={16} /></button>
+              </div>
+            </div>
             <div>
               <p className="sku">{product.sku}</p>
               <h2>{product.name}</h2>
               <p>{product.brand} · {product.category} · {product.size} · {product.color}</p>
             </div>
             <div className="stock-pills">
-              <span>Available <strong>{productQty(product.id, "available")}</strong></span>
-              <span>Total <strong>{productQty(product.id)}</strong></span>
-              <span>Value <strong>{money(productQty(product.id) * productCost(product.id))}</strong></span>
+              <span>Available Stock <strong>{available}</strong></span>
+              <span>Stock Status <strong className={`stock-status ${statusClass}`}>● {status}</strong></span>
+              <span>Inventory Value <strong>{money(available * productCost(product.id))}</strong></span>
             </div>
-            {productQty(product.id, "available") <= product.reorderPoint && <div className="warning"><AlertTriangle size={16} />Reorder suggested</div>}
+            {available <= product.reorderPoint && <div className="warning"><AlertTriangle size={16} />Reorder suggested</div>}
           </article>
-        ))}
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function InventoryHistoryPage({ state, query, filters, setFilters, selectedIds, setSelectedIds, onDeleteSelected, setRemoteError }) {
+  const rows = (state.inventoryHistory || []).filter((item) => {
+    const text = `${item.productName} ${item.sku} ${item.notes}`.toLowerCase();
+    const date = item.timestamp ? item.timestamp.slice(0, 10) : "";
+    return text.includes(query.toLowerCase())
+      && (filters.action === "All" || item.action === filters.action)
+      && (filters.product === "All" || String(item.productId) === String(filters.product))
+      && (!filters.date || date === filters.date);
+  });
+  const allSelected = rows.length > 0 && rows.every((item) => selectedIds.includes(item.id));
+  const toggleAll = () => setSelectedIds(allSelected ? selectedIds.filter((id) => !rows.some((item) => item.id === id)) : [...new Set([...selectedIds, ...rows.map((item) => item.id)])]);
+  const toggleOne = (id) => setSelectedIds(selectedIds.includes(id) ? selectedIds.filter((item) => item !== id) : [...selectedIds, id]);
+
+  return (
+    <section className="stack">
+      <div className="toolbar">
+        <div className="filters">
+          <Filter size={18} />
+          <select value={filters.action} onChange={(event) => setFilters({ ...filters, action: event.target.value })}><option>All</option>{INVENTORY_ACTIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>
+          <select value={filters.product} onChange={(event) => setFilters({ ...filters, product: event.target.value })}><option>All</option>{state.products.map((item) => <option key={item.id} value={item.id}>{item.sku}</option>)}</select>
+          <input type="date" value={filters.date} onChange={(event) => setFilters({ ...filters, date: event.target.value })} title="Movement date" />
+        </div>
+        <button onClick={() => setFilters({ action: "All", product: "All", date: "" })}>Clear filters</button>
       </div>
       <section className="wide-panel">
         <div className="section-head">
-          <h2><ClipboardList size={20} />Inventory history</h2>
+          <h2><ClipboardList size={20} />Inventory History</h2>
+          <div className="button-row">
+            <button className="danger-action" disabled={!selectedIds.length} onClick={onDeleteSelected}><Trash2 size={16} />Delete Selected</button>
+            <button disabled={!selectedIds.length} onClick={() => setRemoteError("Archive Selected is a placeholder for a later version.")}>Archive Selected</button>
+            <button onClick={() => setRemoteError("Export CSV is a placeholder for a later version.")}><Download size={16} />Export CSV</button>
+          </div>
         </div>
-        <DataTable
-          columns={["Timestamp", "SKU", "Product", "Action", "Qty", "Previous", "New", "Reason", "Notes", "User"]}
-          rows={historyRows}
-        />
+        <div className="table-wrap history-table">
+          <table>
+            <thead>
+              <tr>
+                <th><input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label="Select all history records" /></th>
+                <th>Timestamp</th>
+                <th>Product</th>
+                <th>SKU</th>
+                <th>Action</th>
+                <th>Quantity</th>
+                <th>Previous Stock</th>
+                <th>New Stock</th>
+                <th>Reason</th>
+                <th>Notes</th>
+                <th>User</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length ? rows.map((item) => (
+                <tr key={item.id}>
+                  <td><input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => toggleOne(item.id)} aria-label={`Select history record ${item.id}`} /></td>
+                  <td>{item.timestamp ? new Date(item.timestamp).toLocaleString() : ""}</td>
+                  <td>{item.productName}</td>
+                  <td>{item.sku}</td>
+                  <td>{inventoryActionLabel(item.action)}</td>
+                  <td>{item.quantity > 0 ? `+${item.quantity}` : item.quantity}</td>
+                  <td>{item.previousStock}</td>
+                  <td>{item.newStock}</td>
+                  <td>{inventoryReasonLabel(item.reason)}</td>
+                  <td>{item.notes}</td>
+                  <td>{item.user}</td>
+                </tr>
+              )) : <tr><td colSpan="11">No inventory movements found.</td></tr>}
+            </tbody>
+          </table>
+        </div>
       </section>
     </section>
   );
@@ -1114,9 +1216,9 @@ function Detail({ label, value, wide = false }) {
   );
 }
 
-function ProductModal({ onClose, onSave }) {
-  const [form, setForm] = useState({ sku: "", asin: "", upc: "", name: "", brand: "", category: "", size: "", color: "", image: "", reorderPoint: 5, targetStock: 30, defaultCost: 0, defaultPrice: 0 });
-  return <Modal title="Add product" onClose={onClose}><SmartForm form={form} setForm={setForm} onSave={onSave} fields={["sku", "asin", "upc", "name", "brand", "category", "size", "color", "image", "reorderPoint", "targetStock", "defaultCost", "defaultPrice"]} /></Modal>;
+function ProductModal({ product, onClose, onSave }) {
+  const [form, setForm] = useState(product || { sku: "", asin: "", upc: "", name: "", brand: "", category: "", size: "", color: "", image: "", reorderPoint: 5, targetStock: 30, defaultCost: 0, defaultPrice: 0 });
+  return <Modal title={product ? "Edit product" : "Add product"} onClose={onClose}><SmartForm form={form} setForm={setForm} onSave={onSave} fields={["sku", "asin", "upc", "name", "brand", "category", "size", "color", "image", "reorderPoint", "targetStock", "defaultCost", "defaultPrice"]} /></Modal>;
 }
 
 function SupplierModal({ onClose, onSave }) {

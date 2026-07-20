@@ -65,6 +65,13 @@ public class InventoryService {
     }
 
     @Transactional
+    public void deleteHistory(Long id) {
+        InventoryMovement movement = inventoryMovementRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Inventory history record not found"));
+        inventoryMovementRepository.delete(movement);
+    }
+
+    @Transactional
     public InventoryOperationResponse applyAction(InventoryActionRequest request, String userEmail) {
         Product product = productService.getEntity(request.productId());
         String location = request.location().trim();

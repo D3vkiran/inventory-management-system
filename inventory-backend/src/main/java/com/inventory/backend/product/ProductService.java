@@ -1,6 +1,8 @@
 package com.inventory.backend.product;
 
 import com.inventory.backend.exception.ResourceNotFoundException;
+import com.inventory.backend.inventory.InventoryMovementRepository;
+import com.inventory.backend.inventory.InventoryRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,6 +15,8 @@ import java.util.List;
 public class ProductService {
 
     private final ProductRepository productRepository;
+    private final InventoryMovementRepository inventoryMovementRepository;
+    private final InventoryRepository inventoryRepository;
 
     @Transactional(readOnly = true)
     public List<ProductResponse> findAll() {
@@ -55,6 +59,8 @@ public class ProductService {
     @Transactional
     public void delete(Long id) {
         Product product = getEntity(id);
+        inventoryMovementRepository.deleteByProductId(product.getId());
+        inventoryRepository.deleteByProductId(product.getId());
         productRepository.delete(product);
     }
 

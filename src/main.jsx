@@ -329,12 +329,20 @@ function App() {
   };
 
   const deleteProduct = async (product) => {
-    if (!window.confirm(`Delete product ${product.sku}?\n\nThis will not delete inventory history records.`)) return;
     try {
       await api.deleteProduct(product.id);
-      await loadRemoteProductsAndInventory(withActivity(state, `Deleted product ${product.sku}`));
+      const productId = product.id;
+      const nextState = withActivity({
+        ...state,
+        products: state.products.filter((item) => item.id !== productId),
+        inventory: state.inventory.filter((item) => item.productId !== productId),
+        inventoryHistory: (state.inventoryHistory || []).filter((item) => item.productId !== productId)
+      }, `Deleted product ${product.sku}`);
+      saveState(nextState);
+      setModal(null);
+      await loadRemoteProductsAndInventory(nextState);
     } catch (error) {
-      setRemoteError(error.message || "Product delete failed.");
+      setRemoteError("Unable to delete product. Please try again.");
     }
   };
 
@@ -544,7 +552,7 @@ inventory = updateStock(
         {loadingRemoteData && <p className="success-message">Loading backend inventory...</p>}
 
         {view === "dashboard" && <Dashboard state={state} metrics={metrics} productQty={productQty} productCost={productCost} setView={setView} setModal={setModal} />}
-        {view === "products" && <Products products={visibleProducts} state={state} query={query} setQuery={setQuery} productQty={productQty} productCost={productCost} filters={filters} setFilters={setFilters} setModal={setModal} onDelete={deleteProduct} />}
+        {view === "products" && <Products products={visibleProducts} state={state} query={query} setQuery={setQuery} productQty={productQty} productCost={productCost} filters={filters} setFilters={setFilters} setModal={setModal} />}
         {view === "inventory-history" && <InventoryHistoryPage state={state} query={query} filters={historyFilters} setFilters={setHistoryFilters} selectedIds={selectedHistoryIds} setSelectedIds={setSelectedHistoryIds} onDeleteSelected={deleteSelectedHistory} setRemoteError={setRemoteError} />}
         {view === "purchases" && <Purchases state={state} query={query} filters={purchaseFilters} setFilters={setPurchaseFilters} setModal={setModal} onDelete={deletePurchase} />}
         {view === "sales" && <Sales state={state} query={query} filters={saleFilters} setFilters={setSaleFilters} productCost={productCost} setModal={setModal} onDelete={deleteSale} />}
@@ -556,6 +564,7 @@ inventory = updateStock(
 
       {modal === "product" && <ProductModal onClose={() => setModal(null)} onSave={addProduct} />}
       {modal?.type === "productEdit" && <ProductModal product={modal.product} onClose={() => setModal(null)} onSave={(payload) => updateProduct(modal.product.id, payload)} />}
+      {modal?.type === "productDelete" && <ProductDeleteModal product={modal.product} onClose={() => setModal(null)} onDelete={() => deleteProduct(modal.product)} />}
       {modal === "supplier" && <SupplierModal onClose={() => setModal(null)} onSave={addSupplier} />}
       {modal === "purchase" && <PurchaseModal state={state} onClose={() => setModal(null)} onSave={addPurchase} />}
       {modal === "sale" && <SaleModal state={state} onClose={() => setModal(null)} onSave={addSale} />}
@@ -688,7 +697,7 @@ function Dashboard({ state, metrics, productQty, productCost, setView, setModal 
   );
 }
 
-function Products({ products, state, query, setQuery, productQty, productCost, filters, setFilters, setModal, onDelete }) {
+function Products({ products, state, query, setQuery, productQty, productCost, filters, setFilters, setModal }) {
   return (
     <section className="stack">
       <div className="toolbar products-toolbar">
@@ -738,7 +747,7 @@ function Products({ products, state, query, setQuery, productQty, productCost, f
             <div className="product-actions">
               <button onClick={() => setModal({ type: "adjust", productId: product.id })}><PackageCheck size={16} />Adjust Stock</button>
               <button onClick={() => setModal({ type: "productEdit", product })}><Pencil size={16} />Edit</button>
-              <button className="danger-button" onClick={() => onDelete(product)}><Trash2 size={16} />Delete</button>
+              <button className="danger-button" onClick={() => setModal({ type: "productDelete", product })}><Trash2 size={16} />Delete</button>
             </div>
             {available <= product.reorderPoint && <div className="warning"><AlertTriangle size={16} />Reorder suggested</div>}
           </article>
@@ -1243,6 +1252,28 @@ function Detail({ label, value, wide = false }) {
 function ProductModal({ product, onClose, onSave }) {
   const [form, setForm] = useState(product || { sku: "", asin: "", upc: "", name: "", brand: "", category: "", size: "", color: "", image: "", reorderPoint: 5, targetStock: 30, defaultCost: 0, defaultPrice: 0 });
   return <Modal title={product ? "Edit product" : "Add product"} onClose={onClose}><SmartForm form={form} setForm={setForm} onSave={onSave} fields={["sku", "asin", "upc", "name", "brand", "category", "size", "color", "image", "reorderPoint", "targetStock", "defaultCost", "defaultPrice"]} /></Modal>;
+}
+
+function ProductDeleteModal({ product, onClose, onDelete }) {
+  return (
+    <Modal title="Delete Product" onClose={onClose}>
+      <div className="delete-confirmation">
+        <Detail label="Product" value={product.name} />
+        <Detail label="SKU" value={product.sku} />
+        <p>Deleting this product will permanently remove:</p>
+        <ul>
+          <li>Product</li>
+          <li>Current Inventory</li>
+          <li>Inventory History</li>
+        </ul>
+        <p><strong>This action cannot be undone.</strong></p>
+        <div className="button-row">
+          <button onClick={onClose}>Cancel</button>
+          <button className="danger-action" onClick={onDelete}><Trash2 size={16} />Delete Product</button>
+        </div>
+      </div>
+    </Modal>
+  );
 }
 
 function SupplierModal({ onClose, onSave }) {

@@ -1,6 +1,15 @@
 package com.inventory.backend.inventory;
 
 public enum InventoryRemovalReason {
+    SALE,
+    PURCHASE,
+    INITIAL_INVENTORY,
+    CUSTOMER_RETURN,
+    SUPPLIER_REPLACEMENT,
+    RESTOCK,
+    TRANSFER_IN,
+    AMAZON_RETURN,
+    WAREHOUSE_CORRECTION,
     DAMAGED,
     LOST,
     EXPIRED,
@@ -8,6 +17,9 @@ public enum InventoryRemovalReason {
     UNSELLABLE,
     DESTROYED,
     INVENTORY_AUDIT,
+    PHYSICAL_COUNT_CORRECTION,
+    WAREHOUSE_RESET,
+    SYSTEM_CORRECTION,
     WAREHOUSE_CLEANUP,
     INCORRECT_COUNT,
     OTHER

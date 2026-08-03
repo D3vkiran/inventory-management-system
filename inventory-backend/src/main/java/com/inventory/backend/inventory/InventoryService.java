@@ -97,8 +97,9 @@ public class InventoryService {
             throw new IllegalArgumentException("Inventory action rejected: quantity exceeds available stock. Available stock is " + previousStock + ".");
         }
 
-        if ((delta < 0 || request.action().resetsStock()) && request.reason() == null) {
-            throw new IllegalArgumentException("Reason is required when inventory is removed.");
+        InventoryRemovalReason movementReason = resolveReason(request);
+        if (request.action().requiresReason() && movementReason == null) {
+            throw new IllegalArgumentException("Reason is required for this inventory action.");
         }
 
         item.setQuantity(newStock);
@@ -111,7 +112,7 @@ public class InventoryService {
         movement.setQuantity(delta);
         movement.setPreviousStock(previousStock);
         movement.setNewStock(newStock);
-        movement.setReason(delta < 0 || request.action().resetsStock() ? request.reason() : null);
+        movement.setReason(movementReason);
         movement.setNotes(cleanText(request.notes()));
         movement.setUserEmail(cleanUser(userEmail));
         movement.setOccurredAt(Instant.now());
@@ -146,6 +147,13 @@ public class InventoryService {
             return -Math.abs(quantity);
         }
         return quantity;
+    }
+
+    private InventoryRemovalReason resolveReason(InventoryActionRequest request) {
+        if (request.action() == InventoryAction.SOLD) {
+            return InventoryRemovalReason.SALE;
+        }
+        return request.reason();
     }
 
     private String cleanText(String text) {

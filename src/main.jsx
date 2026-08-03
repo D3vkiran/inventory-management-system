@@ -48,8 +48,23 @@ const INVENTORY_ACTIONS = [
   { value: "MANUAL_ADJUSTMENT", label: "Manual Adjustment" },
   { value: "RESET_STOCK", label: "Reset Stock" }
 ];
-const REMOVAL_ACTIONS = ["SOLD", "RETURN_TO_SUPPLIER", "DUMP_DISPOSE", "DAMAGED", "LOST_MISSING", "GIVEAWAY_SAMPLE"];
-const REMOVAL_REASONS = [
+const WRITE_OFF_ACTIONS = ["RETURN_TO_SUPPLIER", "DUMP_DISPOSE", "DAMAGED", "LOST_MISSING", "GIVEAWAY_SAMPLE"];
+const RECEIVE_STOCK_REASONS = [
+  { value: "PURCHASE", label: "Purchase" },
+  { value: "INITIAL_INVENTORY", label: "Initial Inventory" },
+  { value: "CUSTOMER_RETURN", label: "Customer Return" },
+  { value: "SUPPLIER_REPLACEMENT", label: "Supplier Replacement" },
+  { value: "RESTOCK", label: "Restock" },
+  { value: "TRANSFER_IN", label: "Transfer In" },
+  { value: "OTHER", label: "Other" }
+];
+const RETURN_REASONS = [
+  { value: "CUSTOMER_RETURN", label: "Customer Return" },
+  { value: "AMAZON_RETURN", label: "Amazon Return" },
+  { value: "WAREHOUSE_CORRECTION", label: "Warehouse Correction" },
+  { value: "OTHER", label: "Other" }
+];
+const WRITE_OFF_REASONS = [
   { value: "DAMAGED", label: "Damaged" },
   { value: "LOST", label: "Lost" },
   { value: "EXPIRED", label: "Expired" },
@@ -59,9 +74,9 @@ const REMOVAL_REASONS = [
 ];
 const RESET_STOCK_REASONS = [
   { value: "INVENTORY_AUDIT", label: "Inventory Audit" },
-  { value: "WAREHOUSE_CLEANUP", label: "Warehouse Cleanup" },
-  { value: "EXPIRED_INVENTORY", label: "Expired Inventory" },
-  { value: "INCORRECT_COUNT", label: "Incorrect Count" },
+  { value: "PHYSICAL_COUNT_CORRECTION", label: "Physical Count Correction" },
+  { value: "WAREHOUSE_RESET", label: "Warehouse Reset" },
+  { value: "SYSTEM_CORRECTION", label: "System Correction" },
   { value: "OTHER", label: "Other" }
 ];
 const LOCATIONS = ["Home Storage", "Warehouse", "Amazon FBA", "In Transit", "Returned Inventory"];
@@ -72,7 +87,14 @@ const uid = (prefix) => `${prefix}_${Math.random().toString(36).slice(2, 9)}_${D
 const money = (value) => `$${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const today = () => new Date().toISOString().slice(0, 10);
 const inventoryActionLabel = (value) => INVENTORY_ACTIONS.find((item) => item.value === value)?.label || value;
-const inventoryReasonLabel = (value) => [...REMOVAL_REASONS, ...RESET_STOCK_REASONS].find((item) => item.value === value)?.label || value || "";
+const INVENTORY_REASON_OPTIONS = [
+  { value: "SALE", label: "Sale" },
+  ...RECEIVE_STOCK_REASONS,
+  ...RETURN_REASONS,
+  ...WRITE_OFF_REASONS,
+  ...RESET_STOCK_REASONS
+];
+const inventoryReasonLabel = (value) => INVENTORY_REASON_OPTIONS.find((item) => item.value === value)?.label || value || "";
 
 const parseCSV = (csv) => {
   const lines = csv.trim().split('\n');
@@ -1299,13 +1321,21 @@ function ShipmentModal({ state, onClose, onSave }) {
 function AdjustModal({ state, productId, onClose, onSave }) {
   const [form, setForm] = useState({ productId: productId || state.products[0]?.id || "", location: "Home Storage", action: "RECEIVE_STOCK", quantity: 1, reason: "", notes: "" });
   const [error, setError] = useState("");
-  const quantity = Number(form.quantity || 0);
   const currentStock = state.inventory
     .filter((item) => String(item.productId) === String(form.productId) && item.location === form.location && item.status === "available")
     .reduce((sum, item) => sum + Number(item.quantity || 0), 0);
   const isResetStock = form.action === "RESET_STOCK";
-  const reasonRequired = isResetStock || REMOVAL_ACTIONS.includes(form.action) || (form.action === "MANUAL_ADJUSTMENT" && quantity < 0);
-  const reasonOptions = isResetStock ? RESET_STOCK_REASONS : REMOVAL_REASONS;
+  const reasonOptions = form.action === "RECEIVE_STOCK"
+    ? RECEIVE_STOCK_REASONS
+    : form.action === "RETURN_RECEIVED"
+      ? RETURN_REASONS
+      : WRITE_OFF_ACTIONS.includes(form.action)
+        ? WRITE_OFF_REASONS
+        : isResetStock
+          ? RESET_STOCK_REASONS
+          : [];
+  const reasonRequired = isResetStock || WRITE_OFF_ACTIONS.includes(form.action);
+  const showReason = reasonOptions.length > 0;
   const submit = (event) => {
     event.preventDefault();
     if (reasonRequired && !form.reason) {
@@ -1314,7 +1344,7 @@ function AdjustModal({ state, productId, onClose, onSave }) {
     }
     if (isResetStock && !window.confirm("Reset stock to zero?")) return;
     setError("");
-    onSave({ ...form, quantity: isResetStock ? 0 : form.quantity, reason: reasonRequired ? form.reason : "", notes: form.notes });
+    onSave({ ...form, quantity: isResetStock ? 0 : form.quantity, reason: showReason ? form.reason : "", notes: form.notes });
   };
 
   return (
@@ -1329,10 +1359,10 @@ function AdjustModal({ state, productId, onClose, onSave }) {
           <span>Quantity</span>
           <input type="number" value={form.quantity} required step="1" onChange={(event) => setForm({ ...form, quantity: event.target.value })} />
         </label>}
-        {reasonRequired && <Select label="Reason" value={form.reason} onChange={(next) => setForm({ ...form, reason: next })} options={[{ value: "", label: "Select reason" }, ...reasonOptions]} />}
-        {reasonRequired && <label className="field"><span>Notes</span><textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>}
+        {showReason && <Select label="Reason" value={form.reason} onChange={(next) => setForm({ ...form, reason: next })} options={[{ value: "", label: reasonRequired ? "Select reason" : "No reason selected" }, ...reasonOptions]} />}
+        <label className="field"><span>Notes</span><textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
         {error && <p className="form-error">{error}</p>}
-        <button className="primary-button" type="submit"><Check size={16} />Save</button>
+        <button className="primary-button" type="submit" disabled={reasonRequired && !form.reason}><Check size={16} />Save</button>
       </form>
     </Modal>
   );

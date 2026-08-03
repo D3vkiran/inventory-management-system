@@ -26,6 +26,15 @@ public enum InventoryAction {
         return direction < 0;
     }
 
+    public boolean requiresReason() {
+        return this == DUMP_DISPOSE
+                || this == DAMAGED
+                || this == LOST_MISSING
+                || this == RETURN_TO_SUPPLIER
+                || this == GIVEAWAY_SAMPLE
+                || this == RESET_STOCK;
+    }
+
     public boolean resetsStock() {
         return this == RESET_STOCK;
     }

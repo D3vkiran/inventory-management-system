@@ -286,20 +286,19 @@ function App() {
       .reduce((sum, item) => sum + Number(item.quantity || 0), 0);
 
   const productCost = (productId) => {
-    const matching = state.purchases.filter((purchase) => purchase.productId === productId);
-    if (!matching.length) return Number(state.products.find((product) => product.id === productId)?.defaultCost || 0);
-    const qty = matching.reduce((sum, purchase) => sum + Number(purchase.quantity || 0), 0);
-    const total = matching.reduce((sum, purchase) => sum + Number(purchase.quantity || 0) * Number(purchase.unitCost || 0), 0);
-    return qty ? total / qty : 0;
+    return Number(state.products.find((product) => product.id === productId)?.defaultCost || 0);
   };
 
   const metrics = useMemo(() => {
-    const inventoryValue = state.products.reduce((sum, product) => sum + productQty(product.id) * productCost(product.id), 0);
-    const revenue = state.sales.reduce((sum, sale) => sum + Number(sale.quantity) * Number(sale.salePrice), 0);
+    const inventoryValue = state.products.reduce((sum, product) => sum + productQty(product.id, "available") * productCost(product.id), 0);
+    const saleMovements = (state.inventoryHistory || []).filter((item) => item.action === "SOLD");
+    const inventoryRevenue = saleMovements.reduce((sum, movement) => sum + Number(movement.revenue || 0), 0);
+    const inventoryProfit = saleMovements.reduce((sum, movement) => sum + Number(movement.profit || 0), 0);
+    const salesRevenue = state.sales.reduce((sum, sale) => sum + Number(sale.quantity) * Number(sale.salePrice), 0);
     const fees = state.sales.reduce((sum, sale) => sum + Number(sale.quantity) * Number(sale.fees || 0), 0);
     const cogs = state.sales.reduce((sum, sale) => sum + Number(sale.quantity) * productCost(sale.productId), 0);
     const lowStock = state.products.filter((product) => productQty(product.id, "available") <= Number(product.reorderPoint || 0));
-    return { inventoryValue, revenue, fees, cogs, profit: revenue - fees - cogs, lowStock };
+    return { inventoryValue, revenue: salesRevenue + inventoryRevenue, fees, cogs, profit: salesRevenue - fees - cogs + inventoryProfit, lowStock };
   }, [state]);
 
   const visibleProducts = state.products.filter((product) => {
@@ -710,7 +709,7 @@ function Dashboard({ state, metrics, productQty, productCost, setView, setModal 
             product.sku,
             product.name,
             productQty(product.id, "available"),
-            money(productQty(product.id) * productCost(product.id)),
+            money(productQty(product.id, "available") * productCost(product.id)),
             `${Math.round(((Number(product.defaultPrice) - productCost(product.id)) / Math.max(productCost(product.id), 1)) * 100)}%`
           ])}
         />
@@ -826,6 +825,9 @@ function InventoryHistoryPage({ state, query, filters, setFilters, selectedIds, 
                 <th>Previous Stock</th>
                 <th>New Stock</th>
                 <th>Reason</th>
+                <th>Revenue</th>
+                <th>Cost</th>
+                <th>Profit</th>
                 <th>Notes</th>
                 <th>User</th>
               </tr>
@@ -842,10 +844,13 @@ function InventoryHistoryPage({ state, query, filters, setFilters, selectedIds, 
                   <td>{item.previousStock}</td>
                   <td>{item.newStock}</td>
                   <td>{inventoryReasonLabel(item.reason)}</td>
+                  <td>{item.action === "SOLD" ? money(item.revenue) : ""}</td>
+                  <td>{item.action === "SOLD" ? money(item.cost) : ""}</td>
+                  <td>{item.action === "SOLD" ? money(item.profit) : ""}</td>
                   <td>{item.notes}</td>
                   <td>{item.user}</td>
                 </tr>
-              )) : <tr><td colSpan="11">No inventory movements found.</td></tr>}
+              )) : <tr><td colSpan="14">No inventory movements found.</td></tr>}
             </tbody>
           </table>
         </div>

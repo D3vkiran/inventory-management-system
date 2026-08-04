@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 
@@ -114,6 +115,7 @@ public class InventoryService {
         movement.setNewStock(newStock);
         movement.setReason(movementReason);
         movement.setNotes(cleanText(request.notes()));
+        applySaleFinancials(movement, product, delta);
         movement.setUserEmail(cleanUser(userEmail));
         movement.setOccurredAt(Instant.now());
         InventoryMovement savedMovement = inventoryMovementRepository.save(movement);
@@ -154,6 +156,18 @@ public class InventoryService {
             return InventoryRemovalReason.SALE;
         }
         return request.reason();
+    }
+
+    private void applySaleFinancials(InventoryMovement movement, Product product, int delta) {
+        if (movement.getAction() != InventoryAction.SOLD) {
+            return;
+        }
+        BigDecimal quantity = BigDecimal.valueOf(Math.abs(delta));
+        BigDecimal revenue = product.getDefaultPrice().multiply(quantity);
+        BigDecimal cost = product.getDefaultCost().multiply(quantity);
+        movement.setRevenue(revenue);
+        movement.setCost(cost);
+        movement.setProfit(revenue.subtract(cost));
     }
 
     private String cleanText(String text) {

@@ -61,6 +61,9 @@ const normalizeInventoryMovement = (item) => ({
   previousStock: Number(item.previousStock || 0),
   newStock: Number(item.newStock || 0),
   reason: item.reason || "",
+  revenue: Number(item.revenue || 0),
+  cost: Number(item.cost || 0),
+  profit: Number(item.profit || 0),
   notes: item.notes || "",
   user: item.user || "",
   timestamp: item.timestamp || ""

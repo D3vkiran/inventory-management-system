@@ -14,6 +14,7 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 
 @Getter
@@ -54,6 +55,15 @@ public class InventoryMovement extends BaseEntity {
 
     @Column(length = 1000)
     private String notes;
+
+    @Column(precision = 12, scale = 2)
+    private BigDecimal revenue;
+
+    @Column(precision = 12, scale = 2)
+    private BigDecimal cost;
+
+    @Column(precision = 12, scale = 2)
+    private BigDecimal profit;
 
     @Column(nullable = false, length = 160)
     private String userEmail;

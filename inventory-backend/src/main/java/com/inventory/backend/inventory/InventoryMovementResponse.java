@@ -1,5 +1,6 @@
 package com.inventory.backend.inventory;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 
 public record InventoryMovementResponse(
@@ -12,6 +13,9 @@ public record InventoryMovementResponse(
         Integer previousStock,
         Integer newStock,
         InventoryRemovalReason reason,
+        BigDecimal revenue,
+        BigDecimal cost,
+        BigDecimal profit,
         String notes,
         String user,
         Instant timestamp
@@ -27,6 +31,9 @@ public record InventoryMovementResponse(
                 movement.getPreviousStock(),
                 movement.getNewStock(),
                 movement.getReason(),
+                movement.getRevenue(),
+                movement.getCost(),
+                movement.getProfit(),
                 movement.getNotes(),
                 movement.getUserEmail(),
                 movement.getOccurredAt()
